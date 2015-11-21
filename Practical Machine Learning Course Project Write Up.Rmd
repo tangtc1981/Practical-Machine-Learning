@@ -1,0 +1,118 @@
+---
+title: 'Practical Machine Learning: Course Project Write Up'
+author: "TC"
+output: html_document
+---
+
+###Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+###Data 
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+Load libraries:
+```{r}
+library(ggplot2)
+library(caret)
+library(randomForest)
+```
+
+Load datasets
+```{r}
+# load data
+# create data folder if not available
+if (!file.exists("data")) 
+{
+  dir.create("data")
+}
+
+# file URL
+trainingUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testingUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# download the file and note the time
+#download.file(trainingUrl, destfile = "./data/pml-training.csv")
+#download.file(testingUrl, destfile = "./data/pml-testing.csv")
+
+training_data <- read.csv("./data/pml-training.csv", na.strings=c("#DIV/0!"), row.names = 1)
+testing_data <- read.csv("./data/pml-testing.csv", na.strings=c("#DIV/0!"), row.names = 1)
+```
+
+Perform data cleaning
+```{r}
+training_data <- training_data[, 6:dim(training_data)[2]]
+
+treshold <- dim(training_data)[1] * 0.95
+
+#Remove columns with more than 95% of NA or "" values
+cleandata <- !apply(training_data, 2, function(x) sum(is.na(x)) > treshold  || sum(x=="") > treshold)
+
+training_data <- training_data[, cleandata]
+
+dirtydata <- nearZeroVar(training_data, saveMetrics = TRUE)
+
+training_data <- training_data[, dirtydata$nzv==FALSE]
+
+training_data$classe = factor(training_data$classe)
+```
+
+
+Partition data into 50% smaller size
+```{r}
+partitioned_data <- createDataPartition(y=training_data$classe, p=0.5, list=FALSE)
+
+p_training_data <- training_data[partitioned_data, ] 
+p_data <- training_data[-partitioned_data, ]
+```
+
+Random Forest prediction on partitioned training model
+```{r}
+random_model <- randomForest(classe ~ ., data = p_training_data, importance = TRUE, ntrees = 10)
+
+predit_training <- predict(random_model, p_training_data)
+
+confusionMatrix(predit_training, p_training_data$classe)
+```
+
+validate on subset of training model
+```{r}
+predit_testing <- predict(random_model, p_data)
+
+confusionMatrix(predit_testing, p_data$classe)
+```
+
+Prediction on testing data
+```{r}
+ptest <- predict(random_model, testing_data)
+ptest
+```
+
+
+###Conclusion
+
+The random Forest model was choosen and the accuracy of the model is 0.995. Test data set comprises 20 cases. With an accuracy above 99% on cross-validation data, we assume that very low chance of the test samples will be missclassified.
+
+
+###Submission
+```{r}
+# Write files for submission
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(ptest)
+```
